@@ -83,65 +83,78 @@ else
         return;
     }
 
-    var builder = WebApplication.CreateBuilder(Array.Empty<string>());
-
-    // === 設定 Hangfire 儲存 ===
-    if (opt.HfStorage?.ToLower() == "mssql")
+    try
     {
-        Console.WriteLine($"使用 MSSQL 作為 Hangfire 儲存...");
-        builder.Services.AddHangfire(conf => conf.UseSqlServerStorage(hfConn));
-    }
-    else if (opt.HfStorage?.ToLower() == "pg")
-    {
-        Console.WriteLine($"使用 PostgreSQL 作為 Hangfire 儲存...");
-        builder.Services.AddHangfire(conf => conf.UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(hfConn)));
-    }
-    else
-    {
-        Console.WriteLine("錯誤：--hf-storage 必須是 pg 或 mssql。");
-        return;
-    }
+        var builder = WebApplication.CreateBuilder(Array.Empty<string>());
 
-    builder.Services.AddHangfireServer();
-    builder.Services.AddSingleton<ArchiverService>(archiver);
-
-    var app = builder.Build();
-
-    // === 設定 Hangfire Dashboard ===
-    if (opt.HfDashboard)
-    {
-        // 注意：生產環境建議自行實作 IDashboardAuthorizationFilter 做驗證
-        app.UseHangfireDashboard();
-        Console.WriteLine($"Dashboard 已啟動：http://localhost:{opt.HfPort}/hangfire");
-    }
-
-    // === 手動 Trigger API ===
-    app.MapGet("/trigger", (string? job) =>
-    {
-        string jobId;
-        if (!string.IsNullOrEmpty(job))
+        // === 設定 Hangfire 儲存 ===
+        if (opt.HfStorage?.ToLower() == "mssql")
         {
-            RecurringJob.TriggerJob(job);
-            jobId = $"Triggered recurring job: {job}";
+            Console.WriteLine($"使用 MSSQL 作為 Hangfire 儲存...");
+            builder.Services.AddHangfire(conf => conf.UseSqlServerStorage(hfConn));
+        }
+        else if (opt.HfStorage?.ToLower() == "pg")
+        {
+            Console.WriteLine($"使用 PostgreSQL 作為 Hangfire 儲存...");
+            builder.Services.AddHangfire(conf => conf.UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(hfConn)));
         }
         else
         {
-            jobId = BackgroundJob.Enqueue<ArchiverService>(s => s.ExecuteBackupAsync());
+            Console.WriteLine("錯誤：--hf-storage 必須是 pg 或 mssql。");
+            return;
         }
-        return Results.Ok(new { jobId });
-    });
 
-    // === 註冊定時任務 ===
-    RecurringJob.AddOrUpdate<ArchiverService>(
-        "DailyBackup",
-        s => s.ExecuteBackupAsync(),
-        opt.HfInterval
-    );
+        builder.Services.AddHangfireServer();
+        builder.Services.AddSingleton<ArchiverService>(archiver);
 
-    Console.WriteLine($"排程任務已註冊：Cron = {opt.HfInterval}");
-    Console.WriteLine($"等待 Hangfire 觸發...");
-    Console.WriteLine();
+        var app = builder.Build();
 
-    // === 啟動 Web Server ===
-    app.Run($"http://0.0.0.0:{opt.HfPort}");
+        // === 設定 Hangfire Dashboard ===
+        if (opt.HfDashboard)
+        {
+            // 注意：生產環境建議自行實作 IDashboardAuthorizationFilter 做驗證
+            app.UseHangfireDashboard();
+            Console.WriteLine($"Dashboard 已啟動：http://localhost:{opt.HfPort}/hangfire");
+        }
+
+        // === 手動 Trigger API ===
+        app.MapGet("/trigger", (string? job) =>
+        {
+            string jobId;
+            if (!string.IsNullOrEmpty(job))
+            {
+                RecurringJob.TriggerJob(job);
+                jobId = $"Triggered recurring job: {job}";
+            }
+            else
+            {
+                jobId = BackgroundJob.Enqueue<ArchiverService>(s => s.ExecuteBackupAsync());
+            }
+            return Results.Ok(new { jobId });
+        });
+
+        // === 註冊定時任務 ===
+        RecurringJob.AddOrUpdate<ArchiverService>(
+            "DailyBackup",
+            s => s.ExecuteBackupAsync(),
+            opt.HfInterval
+        );
+
+        Console.WriteLine($"排程任務已註冊：Cron = {opt.HfInterval}");
+
+        // === 啟動時寫入系統日誌 ===
+        archiver.WriteSystemLog("STARTUP", $"Hangfire 服務啟動，儲存：{opt.HfStorage}，Cron：{opt.HfInterval}，Dashboard：{(opt.HfDashboard ? "開啟" : "關閉")}");
+
+        Console.WriteLine($"等待 Hangfire 觸發...");
+        Console.WriteLine();
+
+        // === 啟動 Web Server ===
+        app.Run($"http://0.0.0.0:{opt.HfPort}");
+    }
+    catch (Exception ex)
+    {
+        var msg = $"Hangfire 模式啟動失敗：{ex.Message}";
+        Console.WriteLine($"錯誤：{msg}");
+        archiver.WriteSystemLog("STARTUP_ERROR", msg);
+    }
 }

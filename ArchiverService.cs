@@ -349,4 +349,21 @@ public class ArchiverService
             // Log 失敗不影響主要流程
         }
     }
+
+    /// <summary>
+    /// 寫入系統日誌（STARTUP / STARTUP_ERROR 等）
+    /// </summary>
+    public void WriteSystemLog(string status, string message)
+    {
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var logLine = $"{timestamp} | SYSTEM -> (n/a) | {status} | {message}{Environment.NewLine}";
+            File.AppendAllText(_opt.Log, logLine);
+        }
+        catch
+        {
+            // Log 失敗不影響主要流程
+        }
+    }
 }
