@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 
@@ -175,12 +176,18 @@ public class ArchiverService
             {
                 if (i >= dateParts.Length) break;
                 var part = patternParts[i];
-                if (part == "yyyy" || part == "MM" || part == "dd")
+                if (part == "yyyy")
                     dateStr += dateParts[i];
+                else if (part == "MM")
+                    dateStr += dateParts[i];
+                else if (part == "dd")
+                    // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
+                    dateStr += dateParts[i][^2..];
             }
         }
 
         // dateStr 應該是 "yyyyMMdd" 或 "yyyyMMddHHmmss" 之類
+        // 取前 8 碼當日期（即使後面有多餘資料也能正確截斷）
         if (dateStr.Length < 8) return false;
 
         var dateOnly = dateStr.Substring(0, 8);
@@ -279,17 +286,27 @@ public class ArchiverService
     internal string BuildDestPath(string folderPath)
     {
         var relPath = Path.GetRelativePath(_opt.Source, folderPath);
-        var parts = relPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parts = relPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar,
+                                  StringSplitOptions.RemoveEmptyEntries);
 
-        // 取出日期部分
-        if (!TryParseDate(parts.Skip(parts.Length - _datePatterns.Length).ToArray(), out var date))
+        // 只取最後 N 層（N = source-pattern 的日期階層數）
+        if (parts.Length < _datePatterns.Length)
             return _opt.DestPattern;
 
+        var dateParts = parts.Skip(parts.Length - _datePatterns.Length).ToArray();
+
+        // 使用 TryParseDate 解析正確的日期
+        if (!TryParseDate(dateParts, out var parsedDate))
+            return _opt.DestPattern;
+
+        // 置換 dest-pattern：先把 yyyyMMdd 換成 \b（退格字元，路徑不可能出現），
+        // 避免 "202604" 這類子字串被 individual yyyy/MM/dd 置換時吃錯
         var result = _opt.DestPattern
-            .Replace("{date}", date.ToString("yyyyMMdd"))
-            .Replace("yyyy", date.ToString("yyyy"))
-            .Replace("MM", date.ToString("MM"))
-            .Replace("dd", date.ToString("dd"));
+            .Replace("yyyyMMdd", "\b")
+            .Replace("yyyy", parsedDate.ToString("yyyy"))
+            .Replace("MM", parsedDate.ToString("MM"))
+            .Replace("dd", parsedDate.ToString("dd"))
+            .Replace("\b", parsedDate.ToString("yyyyMMdd"));
 
         return result;
     }

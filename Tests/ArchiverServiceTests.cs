@@ -111,7 +111,7 @@ public class ArchiverServiceTests : IDisposable
             Source = _testRoot,
             Days = 5,
             SourcePattern = "yyyyMMdd",
-            DestPattern = "archive/{date}/backup",
+            DestPattern = "archive/yyyyMMdd/backup",
             Remote = "smb:/dest",
             Config = "/dev/null"
         };
@@ -145,5 +145,32 @@ public class ArchiverServiceTests : IDisposable
         var result = svc.BuildDestPath(Path.Combine(_testRoot, yyyy, mm, dd));
 
         Assert.Equal($"backup/{yyyy}/{mm}/{dd}", result);
+    }
+
+    [Fact]
+    public void BuildDestPath_ReplacesYyyyMmDdAsFolderName()
+    {
+        // 測試 --dest-pattern "yyyy/MM/yyyyMMdd" 不會被 yyyy/MM/dd 置換順序搞亂
+        var d = DateTime.Now.AddDays(-10);
+        var yyyy = d.ToString("yyyy");
+        var mm = d.ToString("MM");
+        var dd = d.ToString("dd");
+        var full = d.ToString("yyyyMMdd");
+        Directory.CreateDirectory(Path.Combine(_testRoot, yyyy, mm, full));
+
+        var opt = new Options
+        {
+            Source = _testRoot,
+            Days = 5,
+            SourcePattern = "yyyy/MM/dd",
+            DestPattern = "backup/yyyy/MM/yyyyMMdd",
+            Remote = "smb:/dest",
+            Config = "/dev/null"
+        };
+        var svc = new ArchiverService(opt);
+
+        var result = svc.BuildDestPath(Path.Combine(_testRoot, yyyy, mm, full));
+
+        Assert.Equal($"backup/{yyyy}/{mm}/{full}", result);
     }
 }
