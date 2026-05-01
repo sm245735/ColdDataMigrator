@@ -25,13 +25,6 @@ public class ArchiverService
     {
         _opt = opt;
 
-        // 若有指定 LogDirectory，替換 log4net.config 中的 ${LogDirectory}
-        if (!string.IsNullOrEmpty(opt.LogDirectory) && Directory.Exists(opt.LogDirectory))
-        {
-            // 將 ${LogDirectory} 替換為實際路徑（log4net 不支援動態替換，這裡直接覆寫環境變數）
-            Environment.SetEnvironmentVariable("LogDirectory", opt.LogDirectory);
-        }
-
         // 將 source-pattern 轉成日期欄位的比對 Pattern
         // 例如 "yyyy/MM/dd" → ["\\d{4}", "\\d{2}", "\\d{2}"]
         _datePatterns = opt.SourcePattern
