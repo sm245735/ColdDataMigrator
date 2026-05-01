@@ -194,12 +194,47 @@ smb-daily:/archive/
 
 ## rclone config 範本
 
+### 方法一：互動式設定（推薦新手）
+
+```bash
+rclone config
+```
+
+依序回答問題，rclone 會自動把密碼加密後存進 config 檔：
+
+```
+name> smb-daily
+Storage> smb
+host> 192.168.1.100
+user> backup_admin
+password> 你的明文密碼      ← 直接輸入，rclone 會自動加密
+```
+
+> 💡 **密碼輸入時看不見字元是正常的**，放心輸入後直接按 Enter 即可。
+
+---
+
+### 方法二：手動加密（適合自動化 / 無人值守）
+
+如果不想用互動式問答，可以先用 `rclone obscure` 產生加密密碼，再手動寫入 config：
+
+```bash
+# Step 1：產生加密密碼
+rclone obscure "你的明文密碼"
+# 輸出類似：xxxxxENCRYPTEDxxxxx
+
+# Step 2：手動建立或編輯 config 檔
+nano ~/.config/rclone/rclone.conf
+```
+
+### config 檔格式
+
 ```ini
 [smb-daily]
 type = smb
 host = 192.168.1.100
 user = backup_admin
-pass = xxxxxENCRYPTEDxxxxx
+pass = xxxxxENCRYPTEDxxxxx   # ← 加密後的密碼，rclone 自動處理解密
 
 [sftp-backup]
 type = sftp
@@ -214,15 +249,20 @@ user = ftp_user
 pass = xxxxxENCRYPTEDxxxxx
 ```
 
-### 加密密碼
+### 關於 `rclone obscure`
+
+`rclone obscure` 是 rclone 內建的密碼加密工具，原理和 rclone 本身讀取 config 時的加密方式一致。加密後的密碼只有 rclone 能解讀，放在 config 檔中即使被別人看到也無法直接使用。
 
 ```bash
-# 產生加密密碼
-rclone obscure "YOUR_PASSWORD"
-# 輸出：xxxxxENCRYPTEDxxxxx
+# 加密（任意字串 → 加密版本）
+rclone obscure "MyPassword123"
+# 輸出：1J4sGSh4gM9sB2nR5xYq1Q==
 
-# 將輸出結果寫入 config 檔的 pass= 後面
+# 解密（驗證用，幾乎不會用到）
+rclone obscure "1J4sGSh4gM9sB2nR5xYq1Q=="
+# 輸出：MyPassword123
 ```
+
 
 ---
 
