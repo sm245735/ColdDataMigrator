@@ -18,9 +18,22 @@ public class ArchiverService
     {
         // 建立 logs 目錄（log4net 的 RollingFileAppender 需要）
         Directory.CreateDirectory("logs");
-        // 從 log4net.config 初始化（只在第一次類別載入時執行）
-        var logRepo = LogManager.CreateRepository("BackupArchiver");
-        XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
+
+        // 取得或建立 repository，避免與 Hangfire 或其他模組衝突
+        var logRepo = LogManager.GetRepository("BackupArchiver");
+
+        if (logRepo == null)
+        {
+            // 完全新的 repository，建立並設定
+            logRepo = LogManager.CreateRepository("BackupArchiver");
+            XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
+        }
+        else if (!logRepo.Configured)
+        {
+            // repository 存在但未設定（例如被其他系統預先建立），接手設定
+            XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
+        }
+        // else: 已被 Hangfire 等系統設定，保留現有設定不覆蓋
     }
 
     public ArchiverService(Options opt)
