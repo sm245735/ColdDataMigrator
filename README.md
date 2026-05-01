@@ -11,7 +11,7 @@
 - ✅ **Hangfire Dashboard**：視覺化查看所有 Job 執行歷程
 - ✅ **手動觸發 API**：`POST /trigger` 隨時手動執行
 - ✅ **網路傳輸**：全部使用 rclone（SMB / NFS / SFTP / FTP / FTPS）
-- ✅ **多資料夾格式**：支援 `yyyymmdd` / `yyyy/MM/dd` / `yyyy/yyyymmdd` 等任意階層
+- ✅ **多資料夾格式**：支援 `yyyyMMdd` / `yyyy/MM/dd` / `yyyy/MM/yyyyMMdd` 等任意階層
 - ✅ **跨平台**：.NET 8，Windows / Linux 都能跑
 - ✅ **密碼安全**：rclone 密碼用 `rclone obscure` 加密
 
@@ -132,7 +132,7 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 | `--days` | ✅ | - | 超過幾天要搬遷 |
 | `--source-pattern` | | `yyyyMMdd` | 來源資料夾的日期格式 |
 | `--remote` | ✅ | - | rclone remote + 目的地路徑，例如 `smb-daily:/archive/` |
-| `--dest-pattern` | | `{date}` | 目的地資料夾格式 |
+| `--dest-pattern` | | `yyyy/MM/dd` | 目的地資料夾格式，支援 `yyyy` `MM` `dd` `yyyymmdd` `\b`（退格，清除前次輸出的末段）|`
 | `--config` | ✅ | - | rclone config 檔路徑 |
 | `--compress` | | `true` | 是否壓縮成 zip |
 | `--log` | | `backup.log` | 文字 Log 檔路徑 |
@@ -181,15 +181,20 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 
 ### 目的地結構（`--dest-pattern`）
 
+`--dest-pattern` 格式與 `--source-pattern` 相同，使用 `yyyy` `MM` `dd` `yyyymmdd` 等 placeholder。
+
+使用 `\b`（退格字元）可清除前一段輸出的末段，適合來源是 `yyyy/MM/yyyyMMdd` 的巢狀結構：
+
+| 來源結構 | `--dest-pattern` | 目的地結果 | 說明 |
+|----------|-----------------|-------------|------|
+| `yyyy/MM/yyyyMMdd` | `yyyy/MM/\b` | `2026/04/` | 退格清除 `yyyyMMdd`，只留年月 |
+| `yyyy/MM/yyyyMMdd` | `yyyy/MM/dd` | `2026/04/30` | dd 從 `20260430` 取末 2 碼 |
+| `yyyy/MM/dd` | `yyyy/MM/dd` | `2026/04/30` | 直接對應 |
+
 ```
 smb-daily:/archive/
-├── {date}/                   # --dest-pattern "{date}"
-├── 2024/05/20240501/
-└── 2025/01/20250101/
-
-# 或保持扁平
-smb-daily:/archive/
-└── 20240501.zip             # --dest-pattern "{date}"
+├── 2026/04/              # --dest-pattern "yyyy/MM/\b"
+└── 2026/04/30/           # --dest-pattern "yyyy/MM/dd"
 ```
 
 ---
