@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using BackupArchiver;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -6,6 +7,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using CommandLine;
+
+[assembly: InternalsVisibleTo("BackupArchiver.Tests")]
 
 // === 解析參數 ===
 var result = Parser.Default.ParseArguments<Options>(args);

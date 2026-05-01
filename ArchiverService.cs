@@ -8,6 +8,7 @@ public class ArchiverService
 {
     private readonly Options _opt;
     private readonly string[] _datePatterns;
+    private readonly List<Regex> _excludeRegexes;
 
     public ArchiverService(Options opt)
     {
@@ -21,6 +22,11 @@ public class ArchiverService
                               .Replace("MM", @"\d{2}")
                               .Replace("dd", @"\d{2}"))
             .ToArray();
+
+        // 編譯排除規則（glob * → regex .*）
+        _excludeRegexes = opt.ExcludePatterns
+            .Select(p => new Regex("^" + Regex.Escape(p).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase))
+            .ToList();
     }
 
     public async Task ExecuteBackupAsync()
@@ -29,6 +35,8 @@ public class ArchiverService
         Console.WriteLine($"  來源：{_opt.Source}");
         Console.WriteLine($"  目標：{_opt.Remote}");
         Console.WriteLine($"  保留天數：{_opt.Days} 天");
+        if (_opt.DryRun)
+            Console.WriteLine($"  預覽模式：ON（不會實際修改任何檔案）");
 
         // 1. 掃描符合日期格式的資料夾
         var targetDirs = ScanDateFolders(_opt.Source, _opt.Days);
@@ -42,7 +50,22 @@ public class ArchiverService
 
         Console.WriteLine($"  找到 {targetDirs.Count} 個資料夾需要處理。");
 
-        // 2. 依序處理
+        // 2. 預覽模式
+        if (_opt.DryRun)
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== [Dry-Run 預覽] 以下資料夾將被處理 ===");
+            foreach (var dir in targetDirs)
+            {
+                var relPath = Path.GetRelativePath(_opt.Source, dir);
+                Console.WriteLine($"  [預覽] {relPath}");
+            }
+            Console.WriteLine();
+            Console.WriteLine($"共 {targetDirs.Count} 個資料夾（預覽模式，未實際執行）");
+            return;
+        }
+
+        // 3. 依序處理
         foreach (var dir in targetDirs)
         {
             try
@@ -62,7 +85,7 @@ public class ArchiverService
     /// <summary>
     /// 掃描並過濾出符合日期格式且超過 N 天的資料夾
     /// </summary>
-    private List<string> ScanDateFolders(string rootPath, int daysThreshold)
+    internal List<string> ScanDateFolders(string rootPath, int daysThreshold)
     {
         var result = new List<string>();
         var cutoffDate = DateTime.Now.AddDays(-daysThreshold).Date;
@@ -85,6 +108,13 @@ public class ArchiverService
 
             // 只檢查最後 N 層是否符合日期格式
             if (parts.Length < _datePatterns.Length) continue;
+
+            // 檢查是否在排除名單中（folderName 或完整相對路徑）
+            var folderName = parts[^1];
+            var fullRelPath = relPath.Replace(Path.DirectorySeparatorChar, '/');
+            if (_excludeRegexes.Count > 0 &&
+                (_excludeRegexes.Any(r => r.IsMatch(folderName)) || _excludeRegexes.Any(r => r.IsMatch(fullRelPath))))
+                continue;
 
             var dateParts = parts.Skip(parts.Length - _datePatterns.Length).ToArray();
             var dateStr = string.Join(Path.DirectorySeparatorChar, dateParts);
@@ -201,7 +231,7 @@ public class ArchiverService
     /// <summary>
     /// 根據 dest-pattern 組出目的地子路徑
     /// </summary>
-    private string BuildDestPath(string folderPath)
+    internal string BuildDestPath(string folderPath)
     {
         var relPath = Path.GetRelativePath(_opt.Source, folderPath);
         var parts = relPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

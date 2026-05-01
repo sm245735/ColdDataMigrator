@@ -29,6 +29,12 @@ public class Options
     [Option("log", Default = "backup.log", HelpText = "文字 Log 檔路徑")]
     public string Log { get; set; } = "backup.log";
 
+    [Option("dry-run", Default = false, HelpText = "預覽模式：顯示哪些資料夾會被處理，但不改變任何檔案")]
+    public bool DryRun { get; set; }
+
+    [Option("exclude-pattern", HelpText = "排除的資料夾名稱（可多次指定），支援 * 万用字元")]
+    public IEnumerable<string> ExcludePatterns { get; set; } = Array.Empty<string>();
+
     // === Hangfire 參數 ===
     [Option("hangfire", Default = false, HelpText = "是否啟用 Hangfire 排程模式")]
     public bool Hangfire { get; set; }
