@@ -29,6 +29,9 @@ public class Options
     [Option("log", Default = "backup.log", HelpText = "文字 Log 檔路徑")]
     public string Log { get; set; } = "backup.log";
 
+    [Option("log-directory", Default = "", HelpText = "log4net 檔案 Log 目錄（預設為 Log 檔案所在目錄）")]
+    public string LogDirectory { get; set; } = string.Empty;
+
     [Option("dry-run", Default = false, HelpText = "預覽模式：顯示哪些資料夾會被處理，但不改變任何檔案")]
     public bool DryRun { get; set; }
 

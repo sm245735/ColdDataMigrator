@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using log4net;
+using log4net.Config;
 
 namespace BackupArchiver;
 
@@ -10,10 +12,25 @@ public class ArchiverService
     private readonly Options _opt;
     private readonly string[] _datePatterns;
     private readonly List<Regex> _excludeRegexes;
+    private static readonly ILog _log = LogManager.GetLogger(typeof(ArchiverService));
+
+    static ArchiverService()
+    {
+        // 從 log4net.config 初始化（只在第一次類別載入時執行）
+        var logRepo = LogManager.CreateRepository("BackupArchiver");
+        XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
+    }
 
     public ArchiverService(Options opt)
     {
         _opt = opt;
+
+        // 若有指定 LogDirectory，替換 log4net.config 中的 ${LogDirectory}
+        if (!string.IsNullOrEmpty(opt.LogDirectory) && Directory.Exists(opt.LogDirectory))
+        {
+            // 將 ${LogDirectory} 替換為實際路徑（log4net 不支援動態替換，這裡直接覆寫環境變數）
+            Environment.SetEnvironmentVariable("LogDirectory", opt.LogDirectory);
+        }
 
         // 將 source-pattern 轉成日期欄位的比對 Pattern
         // 例如 "yyyy/MM/dd" → ["\\d{4}", "\\d{2}", "\\d{2}"]
@@ -32,37 +49,33 @@ public class ArchiverService
 
     public async Task ExecuteBackupAsync()
     {
-        Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 開始備份任務...");
-        Console.WriteLine($"  來源：{_opt.Source}");
-        Console.WriteLine($"  目標：{_opt.Remote}");
-        Console.WriteLine($"  保留天數：{_opt.Days} 天");
+        _log.Info("========================================");
+        _log.Info($"開始備份任務 來源：{_opt.Source}  目標：{_opt.Remote}  保留：{_opt.Days} 天");
         if (_opt.DryRun)
-            Console.WriteLine($"  預覽模式：ON（不會實際修改任何檔案）");
+            _log.Info("預覽模式：ON（不會實際修改任何檔案）");
 
         // 1. 掃描符合日期格式的資料夾
         var targetDirs = ScanDateFolders(_opt.Source, _opt.Days);
 
         if (targetDirs.Count == 0)
         {
-            Console.WriteLine("  沒有找到需要搬遷的資料夾。");
+            _log.Warn("沒有找到需要搬遷的資料夾。");
             WriteLog(null, "SKIP", "沒有找到需要搬遷的資料夾");
             return;
         }
 
-        Console.WriteLine($"  找到 {targetDirs.Count} 個資料夾需要處理。");
+        _log.Info($"找到 {targetDirs.Count} 個資料夾需要處理。");
 
         // 2. 預覽模式
         if (_opt.DryRun)
         {
-            Console.WriteLine();
-            Console.WriteLine("=== [Dry-Run 預覽] 以下資料夾將被處理 ===");
+            _log.Info("=== [Dry-Run 預覽] 以下資料夾將被處理 ===");
             foreach (var dir in targetDirs)
             {
                 var relPath = Path.GetRelativePath(_opt.Source, dir);
-                Console.WriteLine($"  [預覽] {relPath}");
+                _log.Info($"  [預覽] {relPath}");
             }
-            Console.WriteLine();
-            Console.WriteLine($"共 {targetDirs.Count} 個資料夾（預覽模式，未實際執行）");
+            _log.Info($"共 {targetDirs.Count} 個資料夾（預覽模式，未實際執行）");
             return;
         }
 
@@ -84,7 +97,7 @@ public class ArchiverService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"  [錯誤] 處理 {dir} 失敗：{ex.Message}");
+                _log.Error($"處理 {dir} 失敗：{ex.Message}");
                 WriteLog(dir, "FAILED", ex.Message);
                 failed++;
             }
@@ -95,9 +108,8 @@ public class ArchiverService
         }
 
         // 最終完成狀態
-        Console.WriteLine();
-        Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 備份任務完成。");
-        Console.WriteLine($"  總計：{total} | 成功：{success} | 失敗：{failed}");
+        _log.Info($"備份任務完成。總計：{total} | 成功：{success} | 失敗：{failed}");
+        _log.Info("========================================");
     }
 
     /// <summary>
@@ -113,7 +125,7 @@ public class ArchiverService
 
         if (!Directory.Exists(rootPath))
         {
-            Console.WriteLine($"  [警告] 來源目錄不存在：{rootPath}");
+            _log.Warn($"來源目錄不存在：{rootPath}");
             return result;
         }
 
@@ -184,7 +196,7 @@ public class ArchiverService
                     // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
                     dateStr += dateParts[i][^2..];
                 else if (part.ToLower() == "yyyymmdd")
-                    // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
+                    // yyyyMMdd 片段只取末 2 碼當 dd（例如 "20260430" → 取 "30"）
                     dateStr += dateParts[i][^2..];
             }
         }
@@ -213,17 +225,9 @@ public class ArchiverService
         {
             zipPath = folderPath + ".zip";
 
-            // 如果 zip 已存在，加上日期版本號
-            if (File.Exists(zipPath))
-            {
-                // var stampedZip = $"{folderPath}_{DateTime.Now:yyyyMMdd}.zip";
-                // Console.WriteLine($"  警告：{zipPath} 已存在，改命名為 {Path.GetFileName(stampedZip)}");
-                // zipPath = stampedZip;
-            }
-
             try
             {
-                Console.WriteLine($"  壓縮：{folderName}");
+                _log.Info($"壓縮：{folderName}");
                 // ZipFile.CreateFromDirectory(folderPath, zipPath, CompressionLevel.Optimal, false);
             }
             catch (Exception ex)
@@ -236,8 +240,8 @@ public class ArchiverService
             zipPath = folderPath; // 不壓縮，直接搬
         }
 
-        // 2b. rclone move（--mkdir 自動建立目的地目錄，--backup 保留已存在的檔案）
-        Console.WriteLine($"  搬遷：{folderName} -> {_opt.Remote}");
+        // 2b. rclone move
+        _log.Info($"搬遷：{folderName} -> {_opt.Remote}");
 
         var destPath = BuildDestPath(folderPath);
         var rcloneDest = $"{_opt.Remote}/{destPath}";
@@ -274,13 +278,13 @@ public class ArchiverService
         catch (Exception ex)
         {
             // 刪除失敗不影響整體流程，僅寫入警告
-            Console.WriteLine($"  警告：清理失敗（{folderName}）：{ex.Message}");
+            _log.Warn($"清理失敗（{folderName}）：{ex.Message}");
             WriteLog(folderPath, "WARN", $"搬遷成功但清理失敗：{ex.Message}");
             return;
         }
 
         WriteLog(folderPath, "SUCCESS", $"已搬遷至 {rcloneDest}");
-        Console.WriteLine($"  完成：{folderName}");
+        _log.Info($"完成：{folderName}");
     }
 
     /// <summary>
@@ -318,11 +322,11 @@ public class ArchiverService
     /// 執行 rclone move
     /// </summary>
     private async Task<bool> RunRcloneMoveAsync(string source, string dest)
-    {        
+    {
         dest = dest.Replace(@"\", "/");
         var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\" --progress --verbose";
 
-        Console.WriteLine($"    rclone {args}");
+        _log.Debug($"rclone {args}");
 
         ProcessStartInfo psi;
         Process? proc;
@@ -343,17 +347,16 @@ public class ArchiverService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"    rclone 啟動失敗：{ex.Message}");
+            _log.Error($"rclone 啟動失敗：{ex.Message}");
             return false;
         }
 
         if (proc == null)
         {
-            Console.WriteLine($"    rclone 啟動失敗：Process 為 null");
+            _log.Error("rclone 啟動失敗：Process 為 null");
             return false;
         }
 
-        //string output, error;
         try
         {
             // 讓輸出顯示在主控台
@@ -361,7 +364,7 @@ public class ArchiverService
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    Console.WriteLine(e.Data); // 這裡會即時印出 rclone 的進度！                                               
+                    Console.WriteLine(e.Data); // 即時印出 rclone 的進度
                 }
             };
 
@@ -377,18 +380,18 @@ public class ArchiverService
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
 
-            // 等待程式執行完畢 (因為你有 await，所以用 WaitForExitAsync)
+            // 等待程式執行完畢
             await proc.WaitForExitAsync();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"    rclone 讀取輸出失敗：{ex.Message}");
+            _log.Error($"rclone 讀取輸出失敗：{ex.Message}");
             try { proc.Kill(); } catch { }
             return false;
         }
 
         if (proc.ExitCode != 0)
-        {           
+        {
             return false;
         }
 
@@ -426,7 +429,7 @@ public class ArchiverService
     }
 
     /// <summary>
-    /// 寫入文字 Log
+    /// 寫入文字 Log（純文字格式，與 log4net 分開）
     /// </summary>
     private void WriteLog(string? folderPath, string status, string message)
     {

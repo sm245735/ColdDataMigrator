@@ -3,6 +3,8 @@ using BackupArchiver;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.SqlServer;
+using log4net;
+using log4net.Config;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,11 +12,17 @@ using CommandLine;
 
 [assembly: InternalsVisibleTo("BackupArchiver.Tests")]
 
+// === 初始化 log4net ===
+var logRepo = LogManager.CreateRepository("BackupArchiver");
+XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
+var log = LogManager.GetLogger("BackupArchiver", typeof(Program));
+
 // === 解析參數 ===
 var result = Parser.Default.ParseArguments<Options>(args);
 
 if (result.Tag == ParserResultType.NotParsed)
 {
+    log.Error("參數錯誤，請使用 --help 查看說明。");
     Console.WriteLine("參數錯誤，請使用 --help 查看說明。");
     return;
 }
@@ -24,24 +32,28 @@ var opt = ((Parsed<Options>)result).Value;
 // === 驗證必要參數 ===
 if (string.IsNullOrWhiteSpace(opt.Source))
 {
+    log.Error("--source 是必填參數。");
     Console.WriteLine("錯誤：--source 是必填參數。");
     return;
 }
 
 if (string.IsNullOrWhiteSpace(opt.Remote))
 {
+    log.Error("--remote 是必填參數。");
     Console.WriteLine("錯誤：--remote 是必填參數。");
     return;
 }
 
 if (string.IsNullOrWhiteSpace(opt.Config))
 {
+    log.Error("--config 是必填參數。");
     Console.WriteLine("錯誤：--config 是必填參數。");
     return;
 }
 
 if (opt.Hangfire && string.IsNullOrWhiteSpace(opt.HfStorage))
 {
+    log.Error("--hangfire=true 時，--hf-storage 是必填參數（pg 或 mssql）。");
     Console.WriteLine("錯誤：--hangfire=true 時，--hf-storage 是必填參數（pg 或 mssql）。");
     return;
 }
@@ -77,6 +89,7 @@ else
     var hfConn = Environment.GetEnvironmentVariable("HF_CONN");
     if (string.IsNullOrWhiteSpace(hfConn))
     {
+        log.Error("請設定環境變數 HF_CONN（Hangfire 資料庫連線字串）。");
         Console.WriteLine("錯誤：請設定環境變數 HF_CONN（Hangfire 資料庫連線字串）。");
         Console.WriteLine("  例如：HF_CONN=\"Server=localhost;Database=Hangfire;Integrated Security=true\"");
         Console.WriteLine("  或：HF_CONN=\"Host=192.168.1.200;Database=hangfire;Username=postgres;Password=xxx\"");
@@ -90,16 +103,17 @@ else
         // === 設定 Hangfire 儲存 ===
         if (opt.HfStorage?.ToLower() == "mssql")
         {
-            Console.WriteLine($"使用 MSSQL 作為 Hangfire 儲存...");
+            Console.WriteLine("使用 MSSQL 作為 Hangfire 儲存...");
             builder.Services.AddHangfire(conf => conf.UseSqlServerStorage(hfConn));
         }
         else if (opt.HfStorage?.ToLower() == "pg")
         {
-            Console.WriteLine($"使用 PostgreSQL 作為 Hangfire 儲存...");
+            Console.WriteLine("使用 PostgreSQL 作為 Hangfire 儲存...");
             builder.Services.AddHangfire(conf => conf.UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(hfConn)));
         }
         else
         {
+            log.Error("--hf-storage 必須是 pg 或 mssql。");
             Console.WriteLine("錯誤：--hf-storage 必須是 pg 或 mssql。");
             return;
         }
@@ -145,7 +159,7 @@ else
         // === 啟動時寫入系統日誌 ===
         archiver.WriteSystemLog("STARTUP", $"Hangfire 服務啟動，儲存：{opt.HfStorage}，Cron：{opt.HfInterval}，Dashboard：{(opt.HfDashboard ? "開啟" : "關閉")}");
 
-        Console.WriteLine($"等待 Hangfire 觸發...");
+        Console.WriteLine("等待 Hangfire 觸發...");
         Console.WriteLine();
 
         // === 啟動 Web Server ===
@@ -154,6 +168,7 @@ else
     catch (Exception ex)
     {
         var msg = $"Hangfire 模式啟動失敗：{ex.Message}";
+        log.Error(msg);
         Console.WriteLine($"錯誤：{msg}");
         archiver.WriteSystemLog("STARTUP_ERROR", msg);
     }
