@@ -226,7 +226,7 @@ public class ArchiverService
             zipPath = folderPath; // 不壓縮，直接搬
         }
 
-        // 2b. rclone move（使用 --backup 保留遠端已存在的檔案）
+        // 2b. rclone move（--mkdir 自動建立目的地目錄，--backup 保留已存在的檔案）
         Console.WriteLine($"  搬遷：{folderName} -> {_opt.Remote}");
 
         var destPath = BuildDestPath(folderPath);
@@ -299,7 +299,7 @@ public class ArchiverService
     /// </summary>
     private async Task<bool> RunRcloneMoveAsync(string source, string dest)
     {
-        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\"";
+        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\" --mkdir";
 
         Console.WriteLine($"    rclone {args}");
 
