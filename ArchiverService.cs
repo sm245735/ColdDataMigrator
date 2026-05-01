@@ -171,18 +171,21 @@ public class ArchiverService
         }
         else
         {
-            // 有分隔符的情況（例如 "yyyy/MM/dd"）
+            // 有分隔符的情況（例如 "yyyy/MM/dd" 或 "yyyy/MM/yyyyMMdd"）
             for (int i = 0; i < patternParts.Length; i++)
             {
                 if (i >= dateParts.Length) break;
-                var part = patternParts[i];
+                var part = patternParts[i].ToLower();
                 if (part == "yyyy")
                     dateStr += dateParts[i];
-                else if (part == "MM")
+                else if (part == "mm")
                     dateStr += dateParts[i];
                 else if (part == "dd")
                     // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
                     dateStr += dateParts[i][^2..];
+                else if (part == "yyyymmdd")
+                    // yyyyMMdd 片段：直接取前 8 碼（例如 "20260501" → 取 "20260501"）
+                    dateStr += dateParts[i][..8];
             }
         }
 
@@ -383,7 +386,7 @@ public class ArchiverService
         int remaining = barWidth - filled;
 
         string pct = total > 0 ? $"{fraction * 100,5:F1}" : "N/A ";
-        string bar = new string('█', filled) + new string('░', remaining);
+        string bar = new string('=', filled) + new string('-', remaining);
 
         // 移動到行首、清除整行、寫入新內容（不換行）
         Console.Write($"\r  [{bar}] {pct}% ({current}/{total}) {TruncatePath(currentItem, 30)}");
