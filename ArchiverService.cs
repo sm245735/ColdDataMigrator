@@ -196,23 +196,39 @@ public class ArchiverService
     private async Task ProcessFolderAsync(string folderPath)
     {
         var folderName = Path.GetFileName(folderPath);
-        var zipPath = folderPath + ".zip";
+        string zipPath;
 
-        // 2a. 壓縮
+        // 2a. 壓縮（檢查目的地是否已存在）
         if (_opt.Compress)
         {
-            Console.WriteLine($"  壓縮：{folderName}");
-            ZipFile.CreateFromDirectory(folderPath, zipPath, CompressionLevel.Optimal, false);
+            zipPath = folderPath + ".zip";
+
+            // 如果 zip 已存在，加上日期版本號
+            if (File.Exists(zipPath))
+            {
+                var stampedZip = $"{folderPath}_{DateTime.Now:yyyyMMdd}.zip";
+                Console.WriteLine($"  警告：{zipPath} 已存在，改命名為 {Path.GetFileName(stampedZip)}");
+                zipPath = stampedZip;
+            }
+
+            try
+            {
+                Console.WriteLine($"  壓縮：{folderName}");
+                ZipFile.CreateFromDirectory(folderPath, zipPath, CompressionLevel.Optimal, false);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"壓縮失敗：{ex.Message}");
+            }
         }
         else
         {
             zipPath = folderPath; // 不壓縮，直接搬
         }
 
-        // 2b. rclone move
+        // 2b. rclone move（使用 --backup 保留遠端已存在的檔案）
         Console.WriteLine($"  搬遷：{folderName} -> {_opt.Remote}");
 
-        // 解析目的地路徑，替換 {date}
         var destPath = BuildDestPath(folderPath);
         var rcloneDest = $"{_opt.Remote}/{destPath}";
 
@@ -220,25 +236,37 @@ public class ArchiverService
 
         if (!success)
         {
-            // rclone 失敗，刪除暫時的 zip
-            if (_opt.Compress && File.Exists(zipPath))
-                File.Delete(zipPath);
+            // rclone 失敗，嘗試刪除暫時的 zip
+            try
+            {
+                if (_opt.Compress && File.Exists(zipPath))
+                    File.Delete(zipPath);
+            }
+            catch { /* 忽略刪除失敗 */ }
+
             throw new Exception("rclone move 失敗");
         }
 
-        // 2c. 刪除原資料夾
-        if (_opt.Compress)
+        // 2c. 刪除原資料夾 / 暫時 zip
+        try
         {
-            // zip 已搬走，資料夾可以刪了
-            Directory.Delete(folderPath, true);
-            // 刪除暫時的 zip（rclone move 已搬走）
-            if (File.Exists(zipPath)) File.Delete(zipPath);
+            if (_opt.Compress)
+            {
+                // zip 已搬走，刪除暫時的 zip（rclone move 已完成）
+                if (File.Exists(zipPath))
+                    File.Delete(zipPath);
+            }
+
+            // 刪除原資料夾
+            if (Directory.Exists(folderPath))
+                Directory.Delete(folderPath, true);
         }
-        else
+        catch (Exception ex)
         {
-            // 不壓縮：已經被 rclone 搬走了，但原資料夾可能還在（視 rclone 實作）
-            // 這裡手動刪除原資料夾
-            Directory.Delete(folderPath, true);
+            // 刪除失敗不影響整體流程，僅寫入警告
+            Console.WriteLine($"  警告：清理失敗（{folderName}）：{ex.Message}");
+            WriteLog(folderPath, "WARN", $"搬遷成功但清理失敗：{ex.Message}");
+            return;
         }
 
         WriteLog(folderPath, "SUCCESS", $"已搬遷至 {rcloneDest}");
@@ -271,31 +299,56 @@ public class ArchiverService
     /// </summary>
     private async Task<bool> RunRcloneMoveAsync(string source, string dest)
     {
-        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\" --progress";
+        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\"";
 
         Console.WriteLine($"    rclone {args}");
 
-        var psi = new ProcessStartInfo
+        ProcessStartInfo psi;
+        Process? proc;
+
+        try
         {
-            FileName = "rclone",
-            Arguments = args,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
+            psi = new ProcessStartInfo
+            {
+                FileName = "rclone",
+                Arguments = args,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
 
-        using var proc = Process.Start(psi);
-        if (proc == null) return false;
+            proc = Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    rclone 啟動失敗：{ex.Message}");
+            return false;
+        }
 
-        var output = await proc.StandardOutput.ReadToEndAsync();
-        var error = await proc.StandardError.ReadToEndAsync();
+        if (proc == null)
+        {
+            Console.WriteLine($"    rclone 啟動失敗：Process 為 null");
+            return false;
+        }
 
-        await proc.WaitForExitAsync();
+        string output, error;
+        try
+        {
+            output = await proc.StandardOutput.ReadToEndAsync();
+            error = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    rclone 讀取輸出失敗：{ex.Message}");
+            try { proc.Kill(); } catch { }
+            return false;
+        }
 
         if (proc.ExitCode != 0)
         {
-            Console.WriteLine($"    rclone 錯誤：{error}");
+            Console.WriteLine($"    rclone 錯誤（exit {proc.ExitCode}）：{error}");
             return false;
         }
 
