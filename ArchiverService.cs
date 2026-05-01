@@ -171,20 +171,20 @@ public class ArchiverService
         }
         else
         {
-            // 有分隔符的情況（例如 "yyyy/MM/dd" 或 "yyyy/MM/yyyyMMdd"）
+            // 有分隔符的情況（例如 "yyyy/MM/dd"）
             for (int i = 0; i < patternParts.Length; i++)
             {
                 if (i >= dateParts.Length) break;
-                var part = patternParts[i].ToLower();
-                if (part == "yyyy")
+                var part = patternParts[i];
+                if (part.ToLower() == "yyyy")
                     dateStr += dateParts[i];
-                else if (part == "mm")
+                else if (part.ToLower() == "mm")
                     dateStr += dateParts[i];
-                else if (part == "dd")
+                else if (part.ToLower() == "dd")
                     // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
                     dateStr += dateParts[i][^2..];
-                else if (part == "yyyymmdd")
-                    // yyyyMMdd 片段只取末 2 碼當 dd（例如 "20260430" → 取 "30"）
+                else if (part.ToLower() == "yyyymmdd")
+                    // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
                     dateStr += dateParts[i][^2..];
             }
         }
@@ -216,15 +216,15 @@ public class ArchiverService
             // 如果 zip 已存在，加上日期版本號
             if (File.Exists(zipPath))
             {
-                var stampedZip = $"{folderPath}_{DateTime.Now:yyyyMMdd}.zip";
-                Console.WriteLine($"  警告：{zipPath} 已存在，改命名為 {Path.GetFileName(stampedZip)}");
-                zipPath = stampedZip;
+                // var stampedZip = $"{folderPath}_{DateTime.Now:yyyyMMdd}.zip";
+                // Console.WriteLine($"  警告：{zipPath} 已存在，改命名為 {Path.GetFileName(stampedZip)}");
+                // zipPath = stampedZip;
             }
 
             try
             {
                 Console.WriteLine($"  壓縮：{folderName}");
-                ZipFile.CreateFromDirectory(folderPath, zipPath, CompressionLevel.Optimal, false);
+                // ZipFile.CreateFromDirectory(folderPath, zipPath, CompressionLevel.Optimal, false);
             }
             catch (Exception ex)
             {
@@ -318,8 +318,9 @@ public class ArchiverService
     /// 執行 rclone move
     /// </summary>
     private async Task<bool> RunRcloneMoveAsync(string source, string dest)
-    {
-        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\" --mkdir";
+    {        
+        dest = dest.Replace(@"\", "/");
+        var args = $"move \"{source}\" \"{dest}\" --config \"{_opt.Config}\" --progress --verbose";
 
         Console.WriteLine($"    rclone {args}");
 
@@ -352,11 +353,31 @@ public class ArchiverService
             return false;
         }
 
-        string output, error;
+        //string output, error;
         try
         {
-            output = await proc.StandardOutput.ReadToEndAsync();
-            error = await proc.StandardError.ReadToEndAsync();
+            // 讓輸出顯示在主控台
+            proc.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.WriteLine(e.Data); // 這裡會即時印出 rclone 的進度！                                               
+                }
+            };
+
+            proc.ErrorDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.WriteLine($"[錯誤或日誌] {e.Data}");
+                }
+            };
+
+            // 開始非同步讀取
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+
+            // 等待程式執行完畢 (因為你有 await，所以用 WaitForExitAsync)
             await proc.WaitForExitAsync();
         }
         catch (Exception ex)
@@ -367,8 +388,7 @@ public class ArchiverService
         }
 
         if (proc.ExitCode != 0)
-        {
-            Console.WriteLine($"    rclone 錯誤（exit {proc.ExitCode}）：{error}");
+        {           
             return false;
         }
 
