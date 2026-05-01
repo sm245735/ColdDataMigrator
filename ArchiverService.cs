@@ -16,6 +16,8 @@ public class ArchiverService
 
     static ArchiverService()
     {
+        // 建立 logs 目錄（log4net 的 RollingFileAppender 需要）
+        Directory.CreateDirectory("logs");
         // 從 log4net.config 初始化（只在第一次類別載入時執行）
         var logRepo = LogManager.CreateRepository("BackupArchiver");
         XmlConfigurator.Configure(logRepo, new FileInfo("log4net.config"));
