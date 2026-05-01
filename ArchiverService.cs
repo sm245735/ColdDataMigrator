@@ -65,21 +65,38 @@ public class ArchiverService
             return;
         }
 
-        // 3. 依序處理
+        // 3. 依序處理（顯示進度條）
+        int total = targetDirs.Count;
+        int done = 0;
+        int success = 0;
+        int failed = 0;
+
         foreach (var dir in targetDirs)
         {
+            var relPath = Path.GetRelativePath(_opt.Source, dir);
+            DrawProgressBar(done, total, relPath);
+
             try
             {
                 await ProcessFolderAsync(dir);
+                success++;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"  [錯誤] 處理 {dir} 失敗：{ex.Message}");
                 WriteLog(dir, "FAILED", ex.Message);
+                failed++;
             }
+
+            done++;
+            DrawProgressBar(done, total, relPath);
+            Console.WriteLine(); // 換行，下一個迴圈會在同位置重繪
         }
 
+        // 最終完成狀態
+        Console.WriteLine();
         Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 備份任務完成。");
+        Console.WriteLine($"  總計：{total} | 成功：{success} | 失敗：{failed}");
     }
 
     /// <summary>
@@ -283,6 +300,36 @@ public class ArchiverService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// 繪製進度條（在同一行覆寫）
+    /// </summary>
+    private void DrawProgressBar(int current, int total, string currentItem)
+    {
+        const int barWidth = 40;
+        double fraction = total > 0 ? (double)current / total : 0;
+        int filled = (int)(fraction * barWidth);
+        int remaining = barWidth - filled;
+
+        string pct = total > 0 ? $"{fraction * 100,5:F1}" : "N/A ";
+        string bar = new string('█', filled) + new string('░', remaining);
+
+        // 移動到行首、清除整行、寫入新內容（不換行）
+        Console.Write($"\r  [{bar}] {pct}% ({current}/{total}) {TruncatePath(currentItem, 30)}");
+
+        if (current == 0) Console.WriteLine(); // 第一筆先換行
+    }
+
+    /// <summary>
+    /// 截斷路徑，保留頭尾
+    /// </summary>
+    private string TruncatePath(string path, int maxLen)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length <= maxLen) return path;
+        if (maxLen <= 10) return path.Substring(0, maxLen);
+        int keep = maxLen - 3;
+        return path.Substring(0, keep / 2) + "..." + path.Substring(path.Length - (keep - keep / 2));
     }
 
     /// <summary>
