@@ -14,6 +14,7 @@
 - ✅ **多資料夾格式**：支援 `yyyyMMdd` / `yyyy/MM/dd` / `yyyy/MM/yyyyMMdd` 等任意階層
 - ✅ **跨平台**：.NET 8，Windows / Linux 都能跑
 - ✅ **密碼安全**：rclone 密碼用 `rclone obscure` 加密
+- ✅ **每日滾動日誌**：log4net 每日自動切新檔案，保留 30 天
 
 ---
 
@@ -132,10 +133,10 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 | `--days` | ✅ | - | 超過幾天要搬遷 |
 | `--source-pattern` | | `yyyyMMdd` | 來源資料夾的日期格式 |
 | `--remote` | ✅ | - | rclone remote + 目的地路徑，例如 `smb-daily:/archive/` |
-| `--dest-pattern` | | `yyyy/MM/dd` | 目的地資料夾格式，支援 `yyyy` `MM` `dd` `yyyymmdd` `\b`（退格，清除前次輸出的末段）|`
+| `--dest-pattern` | | `yyyy/MM/dd` | 目的地資料夾格式，支援 `yyyy` `MM` `dd` `yyyymmdd` `\b`（退格，清除前次輸出的末段）|
 | `--config` | ✅ | - | rclone config 檔路徑 |
 | `--compress` | | `true` | 是否壓縮成 zip |
-| `--log` | | `backup.log` | 文字 Log 檔路徑 |
+| `--log` | | `backup.log` | 文字 Log 檔路徑（任務層級記錄） |
 | `--dry-run` | | `false` | 預覽模式，僅顯示哪些資料夾會被處理，不實際修改任何檔案 |
 | `--exclude-pattern` | | - | 排除的資料夾名稱（可多次指定），支援 `*` 万用字元 |
 
@@ -195,6 +196,46 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 smb-daily:/archive/
 ├── 2026/04/              # --dest-pattern "yyyy/MM/\b"
 └── 2026/04/30/           # --dest-pattern "yyyy/MM/dd"
+```
+
+---
+
+## 日誌架構
+
+本專案有兩套日誌系統：
+
+### 1. log4net（應用層，寫進 `logs/` 目錄）
+
+每日自動切新檔案，保留 30 天，由 log4net 管理。
+
+```
+logs/
+├── BackupArchiver.log          ← 今天的（正在寫入）
+├── BackupArchiver20260501.log
+├── BackupArchiver20260502.log
+└── ...
+```
+
+格式：
+```
+2026-05-01 14:30:00 [INFO] 開始備份任務 來源：D:\backup  目標：smb-daily:/archive/  保留：30 天
+2026-05-01 14:30:01 [INFO] 找到 3 個資料夾需要處理。
+2026-05-01 14:30:05 [INFO] 壓縮：20260430
+2026-05-01 14:30:10 [INFO] 搬遷：20260430 -> smb-daily:/archive/
+2026-05-01 14:30:15 [INFO] 完成：20260430
+2026-05-01 14:30:16 [ERROR] 處理 D:\backup\2024\04\20260420 失敗：rclone move 失敗
+```
+
+可在 `log4net.config` 中調整日誌層級（`INFO` / `DEBUG`）。
+
+### 2. 文字任務 Log（`--log` 指定的路徑）
+
+每筆記錄一次搬遷的結果，適合對帳或稽核。
+
+```
+2026-05-01 09:30:00 | D:\backup\2024\05\20240501 -> smb-daily:/archive/2024/05/ | SUCCESS | 已搬遷至 smb-daily:/archive/2024/05/
+2026-05-01 09:30:05 | D:\backup\2024\06\20240620 -> smb-daily:/archive/2024/06/ | SUCCESS | 已搬遷至 smb-daily:/archive/2024/06/
+2026-05-02 09:25:00 | D:\backup\2024\07\20240715 -> smb-daily:/archive/2024/07/ | FAILED | rclone move 失敗
 ```
 
 ---
@@ -270,17 +311,6 @@ rclone obscure "1J4sGSh4gM9sB2nR5xYq1Q=="
 # 輸出：MyPassword123
 ```
 
-
----
-
-## Log 格式
-
-```
-2026-05-01 09:30:00 | /data/2024/05/20240501 -> smb-daily:/archive/2024/05/ | SUCCESS
-2026-05-01 09:30:05 | /data/2024/06/20240620 -> sftp-backup:/archive/2024/06/ | SUCCESS
-2026-05-02 09:25:00 | /data/2024/07/20240715 -> smb-daily:/archive/2024/07/ | FAILED | network timeout
-```
-
 ---
 
 ## 建置
@@ -303,9 +333,10 @@ ColdDataMigrator/
 ├── Program.cs           # 進入點、CLI 參數、Hangfire 設定
 ├── ArchiverService.cs   # 核心邏輯：掃描、壓縮、搬遷
 ├── Options.cs           # CLI 參數模型
+├── log4net.config      # log4net 日誌設定（每日滾動）
 ├── BackupArchiver.csproj
 ├── README.md            # 本文件
-├── TUTORIAL.md         # 詳細教學（Q&A 形式）
+├── TUTORIAL.md          # 詳細教學（Q&A 形式）
 └── .gitignore
 ```
 
@@ -314,3 +345,5 @@ ColdDataMigrator/
 ## 授權
 
 MIT License
+
+本專案使用 [rclone](https://rclone.org/)（MIT License）作為傳輸引擎，以 `Process.Start` 外部呼叫方式運行，**不修改也不衍生 rclone 原始碼**，因此本專案的授權（MIT）與 rclone 完全獨立。
