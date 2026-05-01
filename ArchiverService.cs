@@ -184,8 +184,8 @@ public class ArchiverService
                     // dd 只取末 2 碼（例如 "20260421" → 取 "21"）
                     dateStr += dateParts[i][^2..];
                 else if (part == "yyyymmdd")
-                    // yyyyMMdd 片段：直接取前 8 碼（例如 "20260501" → 取 "20260501"）
-                    dateStr += dateParts[i][..8];
+                    // yyyyMMdd 片段只取末 2 碼當 dd（例如 "20260430" → 取 "30"）
+                    dateStr += dateParts[i][^2..];
             }
         }
 
