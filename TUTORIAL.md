@@ -329,7 +329,7 @@ rclone about smb-daily: --config ~/.config/rclone/rclone.conf
 ### 建議加上 --dry-run 測試
 
 ```bash
-# 目前版本沒有 --dry-run，未來可在 Issue 反應需求
+> ✅ **目前版本已支援 `--dry-run`**，可安心使用。
 # 建議先用 --days 0 --compress false 測試，看 log 輸出多少資料
 ```
 

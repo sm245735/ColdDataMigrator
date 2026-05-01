@@ -98,7 +98,7 @@ echo "test data" > /tmp/test_archive/2024/06/20240615/file3.txt
   --log /tmp/backup.log
 ```
 
-> 超過 3 天的資料夾（20240501、20240502）會被壓縮搬遷，20240615 還沒超過 3 天所以保留。
+> 💡 **建議第一次執行加上 `--dry-run`** 預覽哪些資料夾會被處理，確認無誤後再拿掉 `--dry-run` 正式執行。
 
 ### Step 5：啟用 Hangfire 排程
 
@@ -136,6 +136,8 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 | `--config` | ✅ | - | rclone config 檔路徑 |
 | `--compress` | | `true` | 是否壓縮成 zip |
 | `--log` | | `backup.log` | 文字 Log 檔路徑 |
+| `--dry-run` | | `false` | 預覽模式，僅顯示哪些資料夾會被處理，不實際修改任何檔案 |
+| `--exclude-pattern` | | - | 排除的資料夾名稱（可多次指定），支援 `*` 万用字元 |
 
 ### Hangfire 參數
 
