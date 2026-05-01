@@ -95,8 +95,7 @@ echo "test data" > /tmp/test_archive/2024/06/20240615/file3.txt
   --source-pattern "yyyy/MM/dd" \
   --remote smb-daily:/share \
   --config ~/.config/rclone/rclone.conf \
-  --compress true \
-  --log /tmp/backup.log
+  --compress true
 ```
 
 > 💡 **建議第一次執行加上 `--dry-run`** 預覽哪些資料夾會被處理，確認無誤後再拿掉 `--dry-run` 正式執行。
@@ -114,7 +113,6 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
   --remote smb-daily:/share \
   --config ~/.config/rclone/rclone.conf \
   --compress true \
-  --log /tmp/backup.log \
   --hangfire true \
   --hf-storage pg \
   --hf-dashboard true \
@@ -136,7 +134,7 @@ export HF_CONN="Host=192.168.1.200;Database=hangfire;Username=postgres;Password=
 | `--dest-pattern` | | `yyyy/MM/dd` | 目的地資料夾格式，支援 `yyyy` `MM` `dd` `yyyymmdd` `\b`（退格，清除前次輸出的末段）|
 | `--config` | ✅ | - | rclone config 檔路徑 |
 | `--compress` | | `true` | 是否壓縮成 zip |
-| `--log` | | `backup.log` | 文字 Log 檔路徑（任務層級記錄） |
+| `--log` | | `backup.log` | 任務結果 Log 檔路徑（每筆記一次搬遷結果，可省略） |
 | `--dry-run` | | `false` | 預覽模式，僅顯示哪些資料夾會被處理，不實際修改任何檔案 |
 | `--exclude-pattern` | | - | 排除的資料夾名稱（可多次指定），支援 `*` 万用字元 |
 
